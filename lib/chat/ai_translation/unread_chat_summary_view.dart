@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../components/app_icons.dart';
 import '../../components/ui_components.dart';
 import '../../l10n/app_localizations.dart';
+import '../../settings/ai_translation/ai_settings_controller.dart';
 import '../../settings/ai_translation/ai_settings_view.dart';
 import '../../theme/app_theme.dart';
 import 'unread_chat_summary_models.dart';
@@ -12,6 +13,8 @@ import 'unread_chat_summary_service.dart';
 
 typedef UnreadChatSummaryOperation =
     Future<UnreadChatSummary> Function(
+      AiFeatureModelConfiguration configuration,
+      String guidance,
       UnreadChatSummaryProgressCallback onProgress,
       UnreadChatSummaryDraftCallback onDraft,
     );
@@ -20,10 +23,14 @@ class UnreadChatSummaryView extends StatefulWidget {
   const UnreadChatSummaryView({
     super.key,
     required this.snapshot,
+    required this.settings,
+    required this.isChatAvailable,
     required this.summarize,
   });
 
   final UnreadChatRangeSnapshot snapshot;
+  final AiSettingsController settings;
+  final bool Function() isChatAvailable;
   final UnreadChatSummaryOperation summarize;
 
   @override
@@ -33,7 +40,7 @@ class UnreadChatSummaryView extends StatefulWidget {
 class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
   UnreadChatSummary? _summary;
   Object? _error;
-  bool _loading = true;
+  bool _loading = false;
   bool _showTechnicalDetails = false;
   final Map<int, UnreadChatSummaryDraft> _chunkDrafts = {};
   UnreadChatSummaryDraft? _finalMergeDraft;
@@ -48,20 +55,34 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
   }
 
   Future<void> _run() async {
-    if (!_loading && mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-        _showTechnicalDetails = false;
-        _chunkDrafts.clear();
-        _finalMergeDraft = null;
-        _progress = const UnreadChatSummaryProgress(
-          stage: UnreadChatSummaryProgressStage.loadingMessages,
-        );
-      });
-    }
+    if (_loading || !mounted) return;
+    setState(() {
+      _loading = true;
+      _summary = null;
+      _error = null;
+      _showTechnicalDetails = false;
+      _chunkDrafts.clear();
+      _finalMergeDraft = null;
+      _progress = const UnreadChatSummaryProgress(
+        stage: UnreadChatSummaryProgressStage.loadingMessages,
+      );
+    });
     try {
-      final summary = await widget.summarize(_reportProgress, _reportDraft);
+      // Settings opened from the error page can change the opt-in, provider,
+      // or prompt; resolve them for each attempt, not when the route opens.
+      final settings = widget.settings;
+      if (!widget.isChatAvailable() ||
+          !settings.initialized ||
+          !settings.enabled ||
+          !settings.isConfiguredForFeature(AiFeature.summary)) {
+        throw const UnreadChatSummaryUnavailable();
+      }
+      final summary = await widget.summarize(
+        settings.configurationForFeature(AiFeature.summary),
+        settings.aiSummaryPrompt,
+        _reportProgress,
+        _reportDraft,
+      );
       if (!mounted) return;
       setState(() {
         _summary = summary;

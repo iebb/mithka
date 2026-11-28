@@ -599,10 +599,13 @@ extension _ChatViewTranslationSummary on _ChatViewState {
 
   bool _canOfferUnreadSummary(AiSettingsController? settings) =>
       shouldShowUnreadChatSummaryAttachment(
-        unreadMessageCount: _remainingUnreadCount,
+        capturedUnreadRemaining: _unreadProgress.initialRemaining(
+          entryUnreadCount: _entryUnreadCount,
+        ),
+        showingLiveUnread: _liveNewMessageCount > 0,
+        summaryEnabled: settings?.enabled == true,
         providerAvailable:
             settings?.initialized == true &&
-            settings?.enabled == true &&
             settings?.isConfiguredForFeature(AiFeature.summary) == true &&
             _vm.unreadSummarySnapshot != null &&
             !_vm.isSecretChat &&
@@ -612,55 +615,101 @@ extension _ChatViewTranslationSummary on _ChatViewState {
   Future<void> _openUnreadSummary() async {
     final snapshot = _vm.unreadSummarySnapshot;
     final settings = context.read<AiSettingsController?>();
-    if (snapshot == null || !_canOfferUnreadSummary(settings)) return;
+    if (_openingUnreadSummary ||
+        snapshot == null ||
+        settings == null ||
+        !_canOfferUnreadSummary(settings)) {
+      return;
+    }
+    final outputLanguage = Localizations.localeOf(context).toLanguageTag();
     _updateState(() => _openingUnreadSummary = true);
 
-    final configuration = settings!.configurationForFeature(AiFeature.summary);
-    final endpoint = configuration.endpoint;
-    final endpointStyle = configuration.endpointStyle;
-    final model = configuration.model;
-    final apiKey = configuration.apiKey;
-    final hostedContextSize =
-        configuration.candidate.kind == AiModelCandidateKind.server
-        ? configuration.contextWindowTokens
-        : null;
-    final pccContextSize =
-        configuration.candidate.kind == AiModelCandidateKind.applePcc
-        ? configuration.contextWindowTokens
-        : null;
-    final onDeviceContextSize =
-        configuration.candidate.kind == AiModelCandidateKind.appleOnDevice
-        ? configuration.contextWindowTokens
-        : null;
-    final outputLanguage = Localizations.localeOf(context).toLanguageTag();
-    final session = _createUnreadSummarySession(
-      candidateKind: configuration.candidate.kind,
-      endpoint: endpoint,
-      endpointStyle: endpointStyle,
-      model: model,
-      apiKey: apiKey,
-      hostedContextSize: hostedContextSize,
-      pccContextSize: pccContextSize,
-      onDeviceContextSize: onDeviceContextSize,
-      outputLanguage: outputLanguage,
-      summaryGuidance: settings.aiSummaryPrompt,
-    );
+    final client = TdClient.shared;
+    final model = _vm;
+    final accountClientId = model.accountClientIdForForwarding;
+    var routeOpen = true;
+    bool isChatAvailable() =>
+        routeOpen &&
+        mounted &&
+        identical(_vm, model) &&
+        identical(model.unreadSummarySnapshot, snapshot) &&
+        client.activeSlot == snapshot.accountSlot &&
+        client.activeClientId == accountClientId &&
+        client.clientId(snapshot.accountSlot) == accountClientId &&
+        !model.isSecretChat &&
+        !model.hasProtectedContent;
+
     int? messageId;
+    _UnreadSummarySession? activeSession;
     try {
       messageId = await Navigator.of(context).push<int>(
         MaterialPageRoute<int>(
           builder: (_) => UnreadChatSummaryView(
             snapshot: snapshot,
-            summarize: (onProgress, onDraft) => session.summarize(
-              snapshot,
-              onProgress: onProgress,
-              onDraft: onDraft,
-            ),
+            settings: settings,
+            isChatAvailable: isChatAvailable,
+            summarize: (configuration, guidance, onProgress, onDraft) async {
+              var invalidated = false;
+              bool isAvailable() {
+                invalidated =
+                    invalidated || !isChatAvailable() || !settings.enabled;
+                return !invalidated;
+              }
+
+              Future<Map<String, dynamic>> query(
+                Map<String, dynamic> request,
+              ) async {
+                if (!isAvailable()) throw const UnreadChatSummaryUnavailable();
+                // The registered concrete client was checked above. Slot-aware
+                // desktop proxies also need the original slot explicitly.
+                final result = await client.queryForSlot(
+                  request,
+                  snapshot.accountSlot,
+                );
+                if (!isAvailable()) throw const UnreadChatSummaryUnavailable();
+                return result;
+              }
+
+              final session = _createUnreadSummarySession(
+                configuration: configuration,
+                query: query,
+                isAvailable: isAvailable,
+                outputLanguage: outputLanguage,
+                summaryGuidance: guidance,
+              );
+              void observeAvailability() {
+                isAvailable();
+              }
+
+              activeSession = session;
+              settings.addListener(observeAvailability);
+              model.addListener(observeAvailability);
+              final accountChanges = client.subscribeActiveSlotChanges().listen(
+                (_) => invalidated = true,
+              );
+              try {
+                return await session.summarize(
+                  snapshot,
+                  onProgress: onProgress,
+                  onDraft: onDraft,
+                );
+              } finally {
+                settings.removeListener(observeAvailability);
+                model.removeListener(observeAvailability);
+                unawaited(accountChanges.cancel());
+                if (identical(activeSession, session)) {
+                  activeSession = null;
+                  session.dispose();
+                }
+              }
+            },
           ),
         ),
       );
     } finally {
-      session.dispose();
+      routeOpen = false;
+      activeSession?.dispose();
+      activeSession = null;
       if (mounted) _updateState(() => _openingUnreadSummary = false);
     }
     if (!mounted) return;
@@ -668,25 +717,14 @@ extension _ChatViewTranslationSummary on _ChatViewState {
   }
 
   _UnreadSummarySession _createUnreadSummarySession({
-    required AiModelCandidateKind candidateKind,
-    required Uri? endpoint,
-    required AiEndpointStyle endpointStyle,
-    required String model,
-    required String apiKey,
-    required int? hostedContextSize,
-    required int? pccContextSize,
-    required int? onDeviceContextSize,
+    required AiFeatureModelConfiguration configuration,
+    required TelegramAiQuery query,
+    required bool Function() isAvailable,
     required String outputLanguage,
     required String summaryGuidance,
   }) {
     final loader = UnreadChatHistoryLoader(
-      query: (accountSlot, request) {
-        final clientId = TdClient.shared.clientId(accountSlot);
-        if (clientId == null) {
-          throw StateError('The account used for this chat is unavailable.');
-        }
-        return TdClient.shared.queryTo(request, clientId);
-      },
+      query: (_, request) => query(request),
     );
     final guidanceTokenEstimate = estimateUnreadSummaryPromptTokens({
       'user_guidance': summaryGuidance,
@@ -694,7 +732,8 @@ extension _ChatViewTranslationSummary on _ChatViewState {
     int messagePayloadBudget(int totalPayloadTokens) =>
         math.max(1, totalPayloadTokens - guidanceTokenEstimate);
 
-    switch (candidateKind) {
+    final contextSize = configuration.contextWindowTokens;
+    switch (configuration.candidate.kind) {
       case AiModelCandidateKind.telegramCocoon:
         const contextWindow = 8192;
         final tokenBudget = unreadSummaryTokenBudget(
@@ -703,9 +742,11 @@ extension _ChatViewTranslationSummary on _ChatViewState {
           maximumResponseTokens: 1300,
           maximumPayloadTokens: 5500,
         );
+        final telegramAi = TelegramAiService(queryOverride: query);
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
+            isAvailable: isAvailable,
             maxChunkMessages: 180,
             maxChunks: 5,
             maxConcurrentRequests: 1,
@@ -722,13 +763,14 @@ extension _ChatViewTranslationSummary on _ChatViewState {
             reservedNonPayloadTokenEstimate:
                 tokenBudget.reservedNonPayloadTokens,
             provider: TelegramCocoonUnreadSummaryProvider(
-              telegramAi: _vm.telegramAi,
+              telegramAi: telegramAi,
             ),
           ),
+          onDispose: telegramAi.dispose,
         );
       case AiModelCandidateKind.applePcc:
         final contextWindow = math.min(
-          pccContextSize ?? applePccContextTokenLimit,
+          contextSize ?? applePccContextTokenLimit,
           applePccContextTokenLimit,
         );
         final tokenBudget = unreadSummaryTokenBudget(
@@ -739,6 +781,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
+            isAvailable: isAvailable,
             maxChunkMessages: 180,
             maxChunks: 5,
             maxChunkTokenEstimate: math.min(
@@ -754,6 +797,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
             reservedNonPayloadTokenEstimate:
                 tokenBudget.reservedNonPayloadTokens,
             provider: ApplePccUnreadSummaryProvider(
+              isAvailable: isAvailable,
               api: ApplePccApi(summaryTimeout: const Duration(seconds: 50)),
               reasoningLevel: ApplePccReasoningLevel.light,
               chunkMaximumResponseTokens: 1300,
@@ -762,7 +806,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
         );
       case AiModelCandidateKind.appleOnDevice:
         final contextWindow = math.min(
-          onDeviceContextSize ?? appleOnDeviceContextTokenLimit,
+          contextSize ?? appleOnDeviceContextTokenLimit,
           appleOnDeviceContextTokenLimit,
         );
         final tokenBudget = unreadSummaryTokenBudget(
@@ -774,6 +818,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
+            isAvailable: isAvailable,
             maxChunkMessages: 70,
             maxChunks: 4,
             maxConcurrentRequests: 1,
@@ -790,6 +835,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
             reservedNonPayloadTokenEstimate:
                 tokenBudget.reservedNonPayloadTokens,
             provider: ApplePccUnreadSummaryProvider(
+              isAvailable: isAvailable,
               api: ApplePccApi(summaryTimeout: const Duration(seconds: 40)),
               model: AppleAiModel.onDevice,
               reasoningLevel: ApplePccReasoningLevel.light,
@@ -799,11 +845,14 @@ extension _ChatViewTranslationSummary on _ChatViewState {
           ),
         );
       case AiModelCandidateKind.server:
+        final endpoint = configuration.endpoint;
+        final model = configuration.model;
+        final endpointStyle = configuration.endpointStyle;
         if (endpoint == null || model.trim().isEmpty) {
           throw StateError('The summary server is not configured.');
         }
         final contextWindow =
-            hostedContextSize ?? AiModelProfile.defaultContextWindowTokens;
+            contextSize ?? AiModelProfile.defaultContextWindowTokens;
         // Reserve response space while selecting input, but do not send a
         // generation cap to user-configured servers.
         const responseTokenReserve = 4096;
@@ -815,14 +864,16 @@ extension _ChatViewTranslationSummary on _ChatViewState {
           maximumPayloadTokens: contextWindow,
         );
         final provider = OpenAiCompatibleUnreadSummaryProvider(
+          isAvailable: isAvailable,
           serverBaseUri: endpoint,
           model: model.trim(),
-          apiKey: apiKey,
+          apiKey: configuration.apiKey,
           endpointStyle: endpointStyle,
         );
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
+            isAvailable: isAvailable,
             provider: provider,
             maxChunkMessages: 1000000,
             maxChunks: 4,

@@ -55,7 +55,10 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
     final entryUpperMessageId = chat.obj('last_message')?.int64('id') ?? 0;
     if (!_didCaptureUnreadSummaryRange) {
       _didCaptureUnreadSummaryRange = true;
-      if (unreadCount > 0 &&
+      // The summary history loader is chat-wide. A topic read boundary
+      // must not be used to include messages from other topics in a summary.
+      if (!isForumTopicTranscript &&
+          unreadCount > 0 &&
           entryUpperMessageId > lastReadInboxId &&
           !isSecretChat &&
           !hasProtectedContent) {

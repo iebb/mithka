@@ -15,6 +15,7 @@ class OpenAiCompatibleUnreadSummaryProvider
   OpenAiCompatibleUnreadSummaryProvider({
     required this.serverBaseUri,
     required this.model,
+    this.isAvailable,
     this.endpointStyle = AiEndpointStyle.openAiChatCompletions,
     http.Client? httpClient,
     AiStdoutLogger? aiLogger,
@@ -35,6 +36,7 @@ class OpenAiCompatibleUnreadSummaryProvider
 
   final Uri serverBaseUri;
   final String model;
+  final bool Function()? isAvailable;
   final AiEndpointStyle endpointStyle;
   final String? apiKey;
   final Duration requestTimeout;
@@ -80,6 +82,9 @@ class OpenAiCompatibleUnreadSummaryProvider
     late _BufferedHttpResponse response;
     var usedCompatibilityFallback = false;
     for (var attempt = 0; ; attempt++) {
+      if (isAvailable?.call() == false) {
+        throw const UnreadChatSummaryUnavailable();
+      }
       try {
         response = await _send(headers, body, onContent: onContent);
       } on TimeoutException {
@@ -109,6 +114,9 @@ class OpenAiCompatibleUnreadSummaryProvider
         continue;
       }
 
+      if (isAvailable?.call() == false) {
+        throw const UnreadChatSummaryUnavailable();
+      }
       _log(
         'response headers stage=${request.stage.name} '
         'status=${response.statusCode} attempt=${attempt + 1} '

@@ -6,12 +6,17 @@ enum ChatNewMessagesControlPlacement { hidden, top, bottom }
 
 const unreadChatSummaryMinimumUnreadMessages = 100;
 
+/// A live-arrival badge counts messages outside the captured summary range.
 bool shouldShowUnreadChatSummaryAttachment({
-  required int unreadMessageCount,
+  required int capturedUnreadRemaining,
+  required bool showingLiveUnread,
+  required bool summaryEnabled,
   required bool providerAvailable,
 }) =>
+    summaryEnabled &&
     providerAvailable &&
-    unreadMessageCount >= unreadChatSummaryMinimumUnreadMessages;
+    !showingLiveUnread &&
+    capturedUnreadRemaining >= unreadChatSummaryMinimumUnreadMessages;
 
 /// Keeps the unread-message badge mounted while the optional AI attachment is
 /// enabled or disabled. A stable badge subtree avoids coupling the core unread

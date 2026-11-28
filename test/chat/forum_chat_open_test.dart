@@ -15,6 +15,7 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/channels/topic_navigation.dart';
 import 'package:mithka/chat/chat_view.dart';
+import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/ai_translation/translation_controller.dart';
@@ -79,6 +80,13 @@ void main() {
               };
             case 'getSupergroupFullInfo':
               return {'@type': 'supergroupFullInfo', 'member_count': 8};
+            case 'getForumTopic':
+              if (request['forum_topic_id'] == 42) {
+                return _topic(42, 'Unread topic')
+                  ..['unread_count'] = 120
+                  ..['last_read_inbox_message_id'] = 200;
+              }
+              return {'@type': 'ok'};
             case 'getForumTopics':
               return {
                 '@type': 'forumTopics',
@@ -99,6 +107,24 @@ void main() {
   tearDownAll(() async {
     await TdClient.shared.closeProxy();
     await updates.close();
+  });
+
+  testWidgets('a single topic does not capture a chat-wide summary range', (
+    tester,
+  ) async {
+    final model = ChatViewModel(
+      chatId: _forumChatId,
+      title: 'Forum Group',
+      markReadOnOpen: false,
+      forumTopicId: 42,
+    );
+    addTearDown(model.dispose);
+    model.onAppear();
+    await tester.pump();
+
+    expect(model.unreadCount, 120);
+    expect(model.lastReadInboxId, 200);
+    expect(model.unreadSummarySnapshot, isNull);
   });
 
   testWidgets('chat list opens a forum group straight into its transcript', (

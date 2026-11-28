@@ -69,6 +69,13 @@ void _logUnreadChatSummary(String message) {
   }());
 }
 
+class UnreadChatSummaryUnavailable implements Exception {
+  const UnreadChatSummaryUnavailable();
+
+  @override
+  String toString() => 'Unread summary is disabled or unavailable.';
+}
+
 class UnreadChatSummaryProviderException implements Exception {
   const UnreadChatSummaryProviderException(this.message, {this.statusCode});
 
@@ -833,6 +840,7 @@ class UnreadChatSummaryService {
   UnreadChatSummaryService({
     required this.historyLoader,
     required this.provider,
+    this.isAvailable,
     this.maxChunkMessages = 720,
     this.maxChunkTokenEstimate = 8000,
     this.maxChunks = 6,
@@ -870,6 +878,7 @@ class UnreadChatSummaryService {
 
   final UnreadChatHistoryLoader historyLoader;
   final UnreadChatSummaryProvider provider;
+  final bool Function()? isAvailable;
   final int maxChunkMessages;
   final int maxChunkTokenEstimate;
   final int maxChunks;
@@ -895,11 +904,18 @@ class UnreadChatSummaryService {
   final Map<String, _GroundedSummary> _completionCache = {};
   final Map<String, Future<_GroundedSummary>> _inFlightCompletions = {};
 
+  bool get _available => isAvailable?.call() ?? true;
+
+  void _checkAvailable() {
+    if (!_available) throw const UnreadChatSummaryUnavailable();
+  }
+
   Future<UnreadChatSummary> summarize(
     UnreadChatRangeSnapshot snapshot, {
     UnreadChatSummaryProgressCallback? onProgress,
     UnreadChatSummaryDraftCallback? onDraft,
   }) async {
+    _checkAvailable();
     final stopwatch = Stopwatch()..start();
     _logUnreadChatSummary(
       'start provider=$providerCode expected_unread=${snapshot.unreadCount}',
@@ -937,6 +953,8 @@ class UnreadChatSummaryService {
         'capped=${transcript.historyCapped} stalled=${transcript.historyStalled} '
         'elapsed_ms=${stopwatch.elapsedMilliseconds}',
       );
+    } on UnreadChatSummaryUnavailable {
+      rethrow;
     } catch (error, stackTrace) {
       _logUnreadChatSummary(
         'history failed type=${error.runtimeType} '
@@ -958,11 +976,13 @@ class UnreadChatSummaryService {
         stackTrace,
       );
     }
+    _checkAvailable();
     final result = await summarizeTranscript(
       transcript,
       onProgress: onProgress,
       onDraft: onDraft,
     );
+    _checkAvailable();
     _logUnreadChatSummary(
       'finished summarized=${result.coverage.summarizedMessageCount} '
       'elapsed_ms=${stopwatch.elapsedMilliseconds}',
@@ -975,6 +995,7 @@ class UnreadChatSummaryService {
     UnreadChatSummaryProgressCallback? onProgress,
     UnreadChatSummaryDraftCallback? onDraft,
   }) async {
+    _checkAvailable();
     final stopwatch = Stopwatch()..start();
     if (transcript.messages.isEmpty) {
       return UnreadChatSummary(
@@ -1137,6 +1158,7 @@ class UnreadChatSummaryService {
       }
     }, maxWorkers: useParallelRequests ? maxConcurrentRequests : 1);
 
+    _checkAvailable();
     final successfulAttempts = chunkAttempts
         .where((attempt) => attempt.summary != null)
         .toList(growable: false);
@@ -1233,6 +1255,7 @@ class UnreadChatSummaryService {
             'elapsed_ms=${mergeStopwatch.elapsedMilliseconds}',
           );
         } catch (error) {
+          _checkAvailable();
           _logUnreadChatSummary(
             'merge provider failed type=${error.runtimeType}; using local merge',
           );
@@ -1241,6 +1264,7 @@ class UnreadChatSummaryService {
         }
       }
     }
+    _checkAvailable();
     content = _withGroundedTopicDates(content, transcript.messages);
 
     final coveredMessages = failedRequestCount == 0 && !processingSampled
@@ -1866,6 +1890,7 @@ class UnreadChatSummaryService {
     required String scopeKey,
     UnreadChatSummaryContentCallback? onDraftText,
   }) async {
+    _checkAvailable();
     final key = jsonEncode({
       'scope': scopeKey,
       'stage': request.stage.name,
@@ -1911,6 +1936,7 @@ class UnreadChatSummaryService {
     final stopwatch = Stopwatch()..start();
     var firstDraftReported = false;
     void reportRawDraft(String rawContent) {
+      if (!_available) return;
       final draft = visibleUnreadChatSummaryDraft(rawContent);
       if (draft.isEmpty) return;
       if (!firstDraftReported) {
@@ -1927,6 +1953,7 @@ class UnreadChatSummaryService {
         ? provider as StreamingUnreadChatSummaryProvider
         : null;
     final Map<String, dynamic> raw;
+    _checkAvailable();
     if (streamingProvider != null) {
       raw = await streamingProvider.completeStreaming(
         request,
@@ -1935,6 +1962,7 @@ class UnreadChatSummaryService {
     } else {
       raw = await provider.complete(request);
     }
+    _checkAvailable();
     _logUnreadChatSummary(
       'provider response stage=${request.stage.name} '
       'streaming=${streamingProvider != null} '
