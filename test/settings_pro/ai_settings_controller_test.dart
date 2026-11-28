@@ -256,17 +256,59 @@ void main() {
         expect(controller.serverProviders, isEmpty);
       },
     );
+
+    test(
+      'defaults bypassProxyForLocalNetworks on and persists turning it off',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final controller = AiSettingsController(
+          preferences,
+          pccApi: _pccApi(available: false),
+          secureRead: (_) async => null,
+          secureWrite: (_, _) async {},
+        );
+        expect(controller.bypassProxyForLocalNetworks, isTrue);
+
+        await controller.initialize();
+        expect(controller.bypassProxyForLocalNetworks, isTrue);
+
+        await controller.setBypassProxyForLocalNetworks(false);
+        expect(controller.bypassProxyForLocalNetworks, isFalse);
+        expect(
+          preferences.getBool(
+            AiSettingsController.bypassProxyForLocalNetworksPreferenceKey,
+          ),
+          isFalse,
+        );
+
+        final restored = AiSettingsController(
+          preferences,
+          pccApi: _pccApi(available: false),
+          secureRead: (_) async => null,
+          secureWrite: (_, _) async {},
+        );
+        expect(restored.bypassProxyForLocalNetworks, isFalse);
+        await restored.initialize();
+        expect(restored.bypassProxyForLocalNetworks, isFalse);
+      },
+    );
   });
 
-  group('hosted AI endpoint validation', () {
-    test('accepts loopback HTTP endpoints and identifies loopback hosts', () {
-      const validLoopback = [
+  group('hosted AI endpoint validation and local-network proxy bypass', () {
+    test('accepts loopback and local-network HTTP endpoints', () {
+      const validLocal = [
         'http://127.0.0.1:3425/v1/chat/completions',
         'http://localhost:11434/v1/chat/completions',
         'http://[::1]:8080/v1/chat/completions',
         'http://proxy.localhost:3425/v1/responses',
+        'http://192.168.1.10:11434/v1/chat/completions',
+        'http://10.0.0.5:8080/v1/chat/completions',
+        'http://172.16.0.2:8080/v1/chat/completions',
+        'http://ollama.local:11434/v1/chat/completions',
+        'http://[fd12:3456::1]:8080/v1/chat/completions',
       ];
-      for (final endpoint in validLoopback) {
+      for (final endpoint in validLocal) {
         expect(
           AiSettingsController.isValidOpenAiCompatibleEndpoint(endpoint),
           isTrue,
@@ -279,6 +321,71 @@ void main() {
       expect(isAiLoopbackHost('::1'), isTrue);
       expect(isAiLoopbackHost('api.openai.com'), isFalse);
       expect(isAiLoopbackHost('192.168.1.10'), isFalse);
+
+      expect(isLocalNetworkHost('127.0.0.1'), isTrue);
+      expect(isLocalNetworkHost('localhost'), isTrue);
+      expect(isLocalNetworkHost('foo.localhost'), isTrue);
+      expect(isLocalNetworkHost('::1'), isTrue);
+      expect(isLocalNetworkHost('10.0.0.1'), isTrue);
+      expect(isLocalNetworkHost('172.16.0.1'), isTrue);
+      expect(isLocalNetworkHost('172.31.255.254'), isTrue);
+      expect(isLocalNetworkHost('192.168.1.10'), isTrue);
+      expect(isLocalNetworkHost('169.254.1.1'), isTrue);
+      expect(isLocalNetworkHost('100.64.0.1'), isTrue);
+      expect(isLocalNetworkHost('100.127.255.254'), isTrue);
+      expect(isLocalNetworkHost('fe80::1'), isTrue);
+      expect(isLocalNetworkHost('[fe80::1%en0]'), isTrue);
+      expect(isLocalNetworkHost('fc00::1'), isTrue);
+      expect(isLocalNetworkHost('fd12:3456::1'), isTrue);
+      expect(isLocalNetworkHost('::ffff:192.168.1.10'), isTrue);
+      expect(isLocalNetworkHost('ollama.local'), isTrue);
+      expect(isLocalNetworkHost('server.lan'), isTrue);
+      expect(isLocalNetworkHost('nas.home.arpa'), isTrue);
+      expect(isLocalNetworkHost('box.localdomain'), isTrue);
+      expect(isLocalNetworkHost('llm.internal'), isTrue);
+
+      expect(isLocalNetworkHost('api.openai.com'), isFalse);
+      expect(isLocalNetworkHost('1.1.1.1'), isFalse);
+      expect(isLocalNetworkHost('172.32.0.1'), isFalse);
+      expect(isLocalNetworkHost('100.128.0.1'), isFalse);
+      expect(isLocalNetworkHost('2001:4860:4860::8888'), isFalse);
+    });
+
+    test('bypasses environment proxy on local networks only when enabled', () {
+      const env = {
+        'http_proxy': 'http://proxy.example:8080',
+        'https_proxy': 'http://proxy.example:8080',
+      };
+      final loopback = Uri.parse('http://127.0.0.1:3425/v1/chat/completions');
+      final lanIp = Uri.parse('http://192.168.1.10:11434/v1/chat/completions');
+      final mdns = Uri.parse('https://ollama.local/v1/chat/completions');
+      final remote = Uri.parse('https://api.openai.com/v1/chat/completions');
+
+      expect(findAiProxy(loopback, environment: env), 'DIRECT');
+      expect(findAiProxy(lanIp, environment: env), 'DIRECT');
+      expect(findAiProxy(mdns, environment: env), 'DIRECT');
+      expect(findAiProxy(remote, environment: env), 'PROXY proxy.example:8080');
+
+      expect(
+        findAiProxy(
+          loopback,
+          bypassProxyForLocalNetworks: false,
+          environment: env,
+        ),
+        'PROXY proxy.example:8080',
+      );
+      expect(
+        findAiProxy(
+          lanIp,
+          bypassProxyForLocalNetworks: false,
+          environment: env,
+        ),
+        'PROXY proxy.example:8080',
+      );
+      expect(
+        findAiProxy(mdns, bypassProxyForLocalNetworks: false, environment: env),
+        'PROXY proxy.example:8080',
+      );
     });
 
     test('rejects insecure remote, inexact, and credential-bearing URLs', () {

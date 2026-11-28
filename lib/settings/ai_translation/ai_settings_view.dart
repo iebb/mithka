@@ -89,18 +89,27 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                       ),
                       onTap: () => _push(context, const AiModelListView()),
                     ),
+                    SettingsSwitchRow(
+                      key: const ValueKey('aiBypassProxyForLocalNetworksRow'),
+                      title: AppStringKeys.aiBypassProxyForLocalNetworks.l10n(
+                        context,
+                      ),
+                      subtitle: AppStringKeys
+                          .aiBypassProxyForLocalNetworksDescription
+                          .l10n(context),
+                      value: settings.bypassProxyForLocalNetworks,
+                      leading: const SettingsLeadingIcon(
+                        icon: HeroAppIcons.globe,
+                      ),
+                      onChanged: (value) => unawaited(
+                        settings.setBypassProxyForLocalNetworks(value),
+                      ),
+                    ),
                   ],
                 ),
                 SettingsSection(
                   titleKey: AppStringKeys.aiModelConfiguration,
                   rows: [
-                    _featureModelRow(
-                      context,
-                      settings: settings,
-                      feature: AiFeature.translation,
-                      title: AppStringKeys.aiTranslateUsing.l10n(context),
-                      icon: HeroAppIcons.language,
-                    ),
                     SettingsRow(
                       key: const ValueKey('aiTranslationPromptRow'),
                       title: AppStringKeys.aiTranslatePrompts.l10n(context),

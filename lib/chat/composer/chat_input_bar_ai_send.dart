@@ -535,6 +535,7 @@ extension _ChatInputBarAiSend on _ChatInputBarState {
             model: configuration.model,
             endpointStyle: configuration.endpointStyle,
             apiKey: configuration.apiKey,
+            bypassProxyForLocalNetworks: settings.bypassProxyForLocalNetworks,
           );
       }
     }

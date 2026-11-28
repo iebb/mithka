@@ -292,7 +292,6 @@ class AiSettingsController extends ChangeNotifier {
     AiSecureRead? secureRead,
     AiSecureWrite? secureWrite,
   }) : _pccApi = pccApi ?? ApplePccApi(),
-       _modelsApi = modelsApi ?? OpenAiCompatibleModelsApi(),
        _ownsModelsApi = modelsApi == null,
        _secureRead = secureRead ?? _defaultSecureRead,
        _secureWrite = secureWrite ?? _defaultSecureWrite,
@@ -300,7 +299,16 @@ class AiSettingsController extends ChangeNotifier {
        // turned off while the rest of the AI settings initialize.
        _showComposerAiButton =
            _preferences.getBool(showComposerAiButtonPreferenceKey) ??
-           defaultShowComposerAiButton;
+           defaultShowComposerAiButton,
+       _bypassProxyForLocalNetworks =
+           _preferences.getBool(bypassProxyForLocalNetworksPreferenceKey) ??
+           defaultBypassProxyForLocalNetworks {
+    _modelsApi =
+        modelsApi ??
+        OpenAiCompatibleModelsApi(
+          shouldBypassProxyForLocalNetworks: () => _bypassProxyForLocalNetworks,
+        );
+  }
 
   static const enabledPreferenceKey = 'ai.unread_summary.enabled';
   static const defaultUnreadSummaryEnabled = false;
@@ -330,6 +338,9 @@ class AiSettingsController extends ChangeNotifier {
   static const showComposerAiButtonPreferenceKey =
       'ai.feature.reply.composer_button.v1';
   static const defaultShowComposerAiButton = true;
+  static const bypassProxyForLocalNetworksPreferenceKey =
+      'ai.network.bypass_proxy_local_networks.v1';
+  static const defaultBypassProxyForLocalNetworks = true;
   static const summaryPromptPreferenceKey = 'ai.feature.summary.prompt.v1';
   static const summaryPromptMaximumCharacters = 1000;
   static const applePccModelCandidateId = 'builtin:apple_pcc';
@@ -343,7 +354,7 @@ class AiSettingsController extends ChangeNotifier {
 
   final SharedPreferences _preferences;
   final ApplePccApi _pccApi;
-  final OpenAiCompatibleModelsApi _modelsApi;
+  late final OpenAiCompatibleModelsApi _modelsApi;
   final bool _ownsModelsApi;
   final AiSecureRead _secureRead;
   final AiSecureWrite _secureWrite;
@@ -361,6 +372,7 @@ class AiSettingsController extends ChangeNotifier {
   String _replyModelCandidateId = telegramCocoonModelCandidateId;
   String _replyPrompt = defaultAiReplyPrompt.trim();
   bool _showComposerAiButton;
+  bool _bypassProxyForLocalNetworks;
   String _summaryPrompt = defaultAiSummaryPrompt.trim();
   final Map<String, String> _profileApiKeys = {};
   ApplePccCapabilities? _pccCapabilities;
@@ -419,6 +431,10 @@ class AiSettingsController extends ChangeNotifier {
   /// Whether the message box shows the AI Reply (sparkle) button. When off
   /// the composer leaves the button out entirely.
   bool get showComposerAiButton => _showComposerAiButton;
+
+  /// Whether AI provider requests to loopback and local-network hosts connect
+  /// directly instead of using system or environment HTTP proxies.
+  bool get bypassProxyForLocalNetworks => _bypassProxyForLocalNetworks;
   bool get hasCustomAiReplyPrompt =>
       _replyPrompt != defaultAiReplyPrompt.trim();
   String get aiSummaryPrompt => _summaryPrompt;
@@ -600,6 +616,9 @@ class AiSettingsController extends ChangeNotifier {
     _showComposerAiButton =
         _preferences.getBool(showComposerAiButtonPreferenceKey) ??
         defaultShowComposerAiButton;
+    _bypassProxyForLocalNetworks =
+        _preferences.getBool(bypassProxyForLocalNetworksPreferenceKey) ??
+        defaultBypassProxyForLocalNetworks;
     _summaryPrompt = _normalizeSummaryPrompt(
       _preferences.getString(summaryPromptPreferenceKey),
     );
@@ -803,6 +822,13 @@ class AiSettingsController extends ChangeNotifier {
     if (_showComposerAiButton == value) return;
     await _preferences.setBool(showComposerAiButtonPreferenceKey, value);
     _showComposerAiButton = value;
+    notifyListeners();
+  }
+
+  Future<void> setBypassProxyForLocalNetworks(bool value) async {
+    if (_bypassProxyForLocalNetworks == value) return;
+    await _preferences.setBool(bypassProxyForLocalNetworksPreferenceKey, value);
+    _bypassProxyForLocalNetworks = value;
     notifyListeners();
   }
 
@@ -1254,9 +1280,9 @@ class AiSettingsController extends ChangeNotifier {
     if (scheme != 'https' && scheme != 'http') {
       throw const FormatException('The server endpoint must use HTTPS.');
     }
-    if (scheme == 'http' && !_isLoopbackHost(uri.host)) {
+    if (scheme == 'http' && !isLocalNetworkHost(uri.host)) {
       throw const FormatException(
-        'HTTP is permitted only for a loopback server.',
+        'HTTP is permitted only for a local network server.',
       );
     }
     try {
@@ -1567,8 +1593,6 @@ class AiSettingsController extends ChangeNotifier {
   }
 
   static const _secureStorageTimeout = Duration(seconds: 5);
-
-  static bool _isLoopbackHost(String host) => isAiLoopbackHost(host);
 
   Future<String> _readSecureValueSafely(String key) async {
     try {

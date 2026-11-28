@@ -638,7 +638,6 @@ extension _ChatViewTranslationSummary on _ChatViewState {
         client.clientId(snapshot.accountSlot) == accountClientId &&
         !model.isSecretChat &&
         !model.hasProtectedContent;
-
     int? messageId;
     _UnreadSummarySession? activeSession;
     try {
@@ -676,6 +675,8 @@ extension _ChatViewTranslationSummary on _ChatViewState {
                 isAvailable: isAvailable,
                 outputLanguage: outputLanguage,
                 summaryGuidance: guidance,
+                bypassProxyForLocalNetworks:
+                    settings.bypassProxyForLocalNetworks,
               );
               void observeAvailability() {
                 isAvailable();
@@ -722,6 +723,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
     required bool Function() isAvailable,
     required String outputLanguage,
     required String summaryGuidance,
+    required bool bypassProxyForLocalNetworks,
   }) {
     final loader = UnreadChatHistoryLoader(
       query: (_, request) => query(request),
@@ -869,6 +871,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
           model: model.trim(),
           apiKey: configuration.apiKey,
           endpointStyle: endpointStyle,
+          bypassProxyForLocalNetworks: bypassProxyForLocalNetworks,
         );
         return _UnreadSummarySession(
           UnreadChatSummaryService(

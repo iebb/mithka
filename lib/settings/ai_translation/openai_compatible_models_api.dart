@@ -86,9 +86,17 @@ class OpenAiCompatibleModelsException implements Exception {
 class OpenAiCompatibleModelsApi {
   OpenAiCompatibleModelsApi({
     http.Client? httpClient,
+    bool bypassProxyForLocalNetworks = true,
+    bool Function()? shouldBypassProxyForLocalNetworks,
     AiStdoutLogger? aiLogger,
     this.requestTimeout = const Duration(seconds: 20),
-  }) : _httpClient = httpClient ?? createAiHttpClient(),
+  }) : _httpClient =
+           httpClient ??
+           createAiHttpClient(
+             bypassProxyForLocalNetworks: bypassProxyForLocalNetworks,
+             shouldBypassProxyForLocalNetworks:
+                 shouldBypassProxyForLocalNetworks,
+           ),
        _aiLogger = aiLogger ?? aiStdoutLogger,
        _ownsHttpClient = httpClient == null;
 

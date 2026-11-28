@@ -3,19 +3,29 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
-bool isAiLoopbackHost(String host) {
-  final normalized = host.toLowerCase();
-  if (normalized == 'localhost' || normalized.endsWith('.localhost')) {
-    return true;
+import 'ai_http_client.dart';
+
+String findAiProxy(
+  Uri uri, {
+  bool bypassProxyForLocalNetworks = true,
+  Map<String, String>? environment,
+}) {
+  if (bypassProxyForLocalNetworks && isLocalNetworkHost(uri.host)) {
+    return 'DIRECT';
   }
-  return InternetAddress.tryParse(normalized)?.isLoopback ?? false;
+  return HttpClient.findProxyFromEnvironment(uri, environment: environment);
 }
 
-http.Client createAiHttpClient() {
+http.Client createAiHttpClient({
+  bool bypassProxyForLocalNetworks = true,
+  bool Function()? shouldBypassProxyForLocalNetworks,
+}) {
   final ioHttpClient = HttpClient()
-    ..findProxy = (uri) {
-      if (isAiLoopbackHost(uri.host)) return 'DIRECT';
-      return HttpClient.findProxyFromEnvironment(uri);
-    };
+    ..findProxy = (uri) => findAiProxy(
+      uri,
+      bypassProxyForLocalNetworks:
+          shouldBypassProxyForLocalNetworks?.call() ??
+          bypassProxyForLocalNetworks,
+    );
   return IOClient(ioHttpClient);
 }

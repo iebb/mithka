@@ -515,6 +515,15 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
       NativeTranslationApi.availableProviders();
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ai = context.read<AiSettingsController>();
+    if (!ai.initialized) {
+      unawaited(ai.initialize());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final translation = context.watch<TranslationController>();
     final ai = context.watch<AiSettingsController>();

@@ -18,6 +18,7 @@ class OpenAiCompatibleUnreadSummaryProvider
     this.isAvailable,
     this.endpointStyle = AiEndpointStyle.openAiChatCompletions,
     http.Client? httpClient,
+    bool bypassProxyForLocalNetworks = true,
     AiStdoutLogger? aiLogger,
     this.apiKey,
     this.requestTimeout = const Duration(seconds: 75),
@@ -30,7 +31,11 @@ class OpenAiCompatibleUnreadSummaryProvider
     ],
   }) : assert(requestTimeout > Duration.zero),
        assert(streamIdleTimeout > Duration.zero),
-       _httpClient = httpClient ?? createAiHttpClient(),
+       _httpClient =
+           httpClient ??
+           createAiHttpClient(
+             bypassProxyForLocalNetworks: bypassProxyForLocalNetworks,
+           ),
        _aiLogger = aiLogger ?? aiStdoutLogger,
        _ownsHttpClient = httpClient == null;
 

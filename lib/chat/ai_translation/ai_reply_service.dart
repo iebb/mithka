@@ -1006,10 +1006,15 @@ class HostedAiReplyProvider
     required this.endpointStyle,
     this.apiKey = '',
     http.Client? httpClient,
+    bool bypassProxyForLocalNetworks = true,
     AiStdoutLogger? aiLogger,
     this.requestTimeout = const Duration(seconds: 75),
     this.streamIdleTimeout = const Duration(seconds: 30),
-  }) : _httpClient = httpClient ?? createAiHttpClient(),
+  }) : _httpClient =
+           httpClient ??
+           createAiHttpClient(
+             bypassProxyForLocalNetworks: bypassProxyForLocalNetworks,
+           ),
        _aiLogger = aiLogger ?? aiStdoutLogger,
        _ownsHttpClient = httpClient == null;
 

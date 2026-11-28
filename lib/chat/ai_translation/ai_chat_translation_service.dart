@@ -22,13 +22,18 @@ class AiChatTranslationService {
     String instructions = defaultAiTranslationPrompt,
     ApplePccApi? appleApi,
     http.Client? httpClient,
+    bool bypassProxyForLocalNetworks = true,
     AiStdoutLogger? aiLogger,
     TelegramAiService? telegramAi,
     this.requestTimeout = const Duration(seconds: 60),
   }) : assert(providerMode != null || telegramAi != null),
        instructions = buildAiTranslationInstructions(instructions),
        _appleApi = appleApi ?? ApplePccApi(),
-       _httpClient = httpClient ?? createAiHttpClient(),
+       _httpClient =
+           httpClient ??
+           createAiHttpClient(
+             bypassProxyForLocalNetworks: bypassProxyForLocalNetworks,
+           ),
        _aiLogger = aiLogger ?? aiStdoutLogger,
        _telegramAi = telegramAi,
        _ownsHttpClient = httpClient == null;
@@ -69,6 +74,7 @@ class AiChatTranslationService {
       model: configuration.model,
       apiKey: configuration.apiKey,
       instructions: instructions,
+      bypassProxyForLocalNetworks: settings.bypassProxyForLocalNetworks,
     );
   }
 

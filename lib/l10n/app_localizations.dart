@@ -449,6 +449,9 @@ abstract final class AppStringKeys {
   static const aiAddModel = 'aiAddModel';
   static const aiAddProvider = 'aiAddProvider';
   static const aiAddProviderFirst = 'aiAddProviderFirst';
+  static const aiBypassProxyForLocalNetworks = 'aiBypassProxyForLocalNetworks';
+  static const aiBypassProxyForLocalNetworksDescription =
+      'aiBypassProxyForLocalNetworksDescription';
   static const aiContextWindow = 'aiContextWindow';
   static const aiContextDetected = 'aiContextDetected';
   static const aiContextManual = 'aiContextManual';
