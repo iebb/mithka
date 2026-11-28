@@ -145,6 +145,8 @@
     <string name="aiAddModel">Add Model</string>
     <string name="aiAddProvider">Add Provider</string>
     <string name="aiAddProviderFirst">Add a provider first</string>
+    <string name="aiBypassProxyForLocalNetworks">No proxy on local networks</string>
+    <string name="aiBypassProxyForLocalNetworksDescription">Connect directly to loopback and local network AI servers instead of using a system proxy.</string>
     <string name="aiContextDetected">Detected from provider</string>
     <string name="aiContextManual">Not reported by provider; verify manually</string>
     <string name="aiContextWindow">Context Tokens</string>

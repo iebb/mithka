@@ -145,6 +145,8 @@
     <string name="aiAddModel">モデルを追加</string>
     <string name="aiAddProvider">プロバイダーを追加</string>
     <string name="aiAddProviderFirst">先にプロバイダーを追加してください</string>
+    <string name="aiBypassProxyForLocalNetworks">ローカルネットワークでプロキシを使用しない</string>
+    <string name="aiBypassProxyForLocalNetworksDescription">ループバックやローカルネットワーク上のAIサーバーには、システムプロキシを経由せず直接接続します。</string>
     <string name="aiContextDetected">プロバイダーから検出済み</string>
     <string name="aiContextManual">未提供のため手動で確認してください</string>
     <string name="aiContextWindow">コンテキストトークン</string>

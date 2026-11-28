@@ -145,6 +145,8 @@
     <string name="aiAddModel">모델 추가</string>
     <string name="aiAddProvider">제공자 추가</string>
     <string name="aiAddProviderFirst">먼저 제공자를 추가하세요</string>
+    <string name="aiBypassProxyForLocalNetworks">로컬 네트워크에서 프록시 사용 안 함</string>
+    <string name="aiBypassProxyForLocalNetworksDescription">루프백 및 로컬 네트워크 AI 서버에 시스템 프록시를 거치지 않고 직접 연결합니다.</string>
     <string name="aiContextDetected">제공자에서 감지됨</string>
     <string name="aiContextManual">제공자가 보고하지 않음; 직접 확인하세요</string>
     <string name="aiContextWindow">컨텍스트 토큰</string>

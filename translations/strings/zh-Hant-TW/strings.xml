@@ -145,6 +145,8 @@
     <string name="aiAddModel">新增模型</string>
     <string name="aiAddProvider">新增服務商</string>
     <string name="aiAddProviderFirst">請先新增服務商</string>
+    <string name="aiBypassProxyForLocalNetworks">區域網路不使用代理</string>
+    <string name="aiBypassProxyForLocalNetworksDescription">連線至回環和區域網路 AI 伺服器時直接連線，不經過系統代理。</string>
     <string name="aiContextDetected">已從服務商偵測</string>
     <string name="aiContextManual">服務商未提供，請手動確認</string>
     <string name="aiContextWindow">上下文 Token</string>
