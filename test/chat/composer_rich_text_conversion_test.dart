@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderEditable;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_view_model.dart';
@@ -70,8 +71,107 @@ Finder _icon(AppIconData icon) => find.byWidgetPredicate(
   (widget) => widget is AppIcon && widget.icon == icon,
 );
 
+const _pill = ValueKey('composerTextInputBox');
+const _sender = ValueKey('composerSenderPicker');
+const _pen = ValueKey('composerRichTextConvertButton');
+const _send = ValueKey('composerSendButton');
+
+RenderEditable _editor(WidgetTester tester) =>
+    tester.state<EditableTextState>(find.byType(EditableText)).renderEditable;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  for (final direction in TextDirection.values) {
+    testWidgets(
+      'standard phone composer centers one visual line ($direction)',
+      (tester) async {
+        await _pumpComposer(tester, phoneDirection: direction);
+        final field = find.byType(TextField);
+        final editable = find.byType(EditableText);
+        final sender = find.byKey(_sender);
+        final pen = find.byKey(_pen);
+        final send = find.byKey(_send);
+
+        void expectCentered({required bool hasText}) {
+          final center = tester.getCenter(find.byKey(_pill)).dy;
+          expect(tester.getCenter(editable).dy, closeTo(center, 1));
+          expect(tester.getCenter(sender).dy, closeTo(center, 1));
+          final editor = _editor(tester);
+          final caret = editor.getLocalRectForCaret(editor.selection!.extent);
+          expect(editor.localToGlobal(caret.center).dy, closeTo(center, 1));
+          expect(editor.textAlign, TextAlign.start);
+          expect(editor.textDirection, direction);
+          if (hasText) {
+            expect(tester.getCenter(pen).dy, closeTo(center, 1));
+            expect(tester.getCenter(send).dy, closeTo(center, 1));
+            expect(tester.getSize(send).height, 44);
+          }
+        }
+
+        await tester.showKeyboard(field);
+        await tester.pump();
+        expectCentered(hasText: false);
+        await tester.enterText(field, 'Hello');
+        await tester.pump();
+        expectCentered(hasText: true);
+
+        tester.testTextInput.updateEditingValue(
+          const TextEditingValue(
+            text: '猫猫',
+            selection: TextSelection.collapsed(offset: 2),
+            composing: TextRange(start: 0, end: 2),
+          ),
+        );
+        await tester.pump();
+        expectCentered(hasText: true);
+        expect(
+          tester.widget<TextField>(field).controller!.value.composing.isValid,
+          isTrue,
+        );
+        await tester.enterText(field, '猫猫');
+        await tester.pump();
+        expectCentered(hasText: true);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+    );
+  }
+
+  testWidgets(
+    'standard phone composer keeps multiline controls bottom-aligned',
+    (tester) async {
+      await _pumpComposer(tester, phoneDirection: TextDirection.ltr);
+      final field = find.byType(TextField);
+      final pill = find.byKey(_pill);
+      final sender = find.byKey(_sender);
+      final pen = find.byKey(_pen);
+      final send = find.byKey(_send);
+      final singleLineHeight = tester.getSize(pill).height;
+
+      for (final draft in ['First\nSecond\nThird', 'W' * 30]) {
+        await tester.enterText(field, draft);
+        await tester.pump();
+        final editor = _editor(tester);
+        final lines = editor.startVerticalCaretMovement(
+          const TextPosition(offset: 0),
+        );
+        expect(lines.moveNext(), isTrue);
+        expect(lines.moveNext(), isTrue);
+        expect(lines.moveNext(), isFalse);
+        expect(tester.getSize(pill).height, greaterThan(singleLineHeight));
+        expect(tester.getRect(sender).bottom, tester.getRect(pen).bottom);
+        expect(tester.getRect(pen).bottom, tester.getRect(pill).bottom - 9);
+        expect(tester.getRect(send).bottom, tester.getRect(pill).bottom);
+        final caret = editor.getLocalRectForCaret(editor.selection!.extent);
+        expect(caret.center.dy, inInclusiveRange(0, editor.size.height));
+      }
+      await tester.enterText(field, 'Hi');
+      await tester.pump();
+      expect(tester.getSize(pill).height, singleLineHeight);
+      expect(tester.getCenter(send).dy, closeTo(tester.getCenter(pill).dy, 1));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 
   test('only inline documents within the plain length send inline', () {
     expect(_result('hello').sendsAsFormattedText, isTrue);
@@ -136,8 +236,22 @@ void main() {
   });
 }
 
-Future<_ConversionViewModel> _pumpComposer(WidgetTester tester) async {
+Future<_ConversionViewModel> _pumpComposer(
+  WidgetTester tester, {
+  TextDirection? phoneDirection,
+}) async {
   final vm = _ConversionViewModel();
+  if (phoneDirection != null) {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    const sender = MessageSenderOption(id: 1, title: 'You', sender: {});
+    vm.selectedMessageSender = sender;
+    vm.availableMessageSenders = [
+      sender,
+      const MessageSenderOption(id: 2, title: 'Channel', sender: {}),
+    ];
+  }
   addTearDown(vm.dispose);
   await tester.pumpWidget(
     MaterialApp(
@@ -150,9 +264,15 @@ Future<_ConversionViewModel> _pumpComposer(WidgetTester tester) async {
       ],
       supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
-        platform: TargetPlatform.android,
+        platform: phoneDirection == null
+            ? TargetPlatform.android
+            : TargetPlatform.iOS,
         extensions: [AppColors.light],
       ),
+      builder: phoneDirection == null
+          ? null
+          : (context, child) =>
+                Directionality(textDirection: phoneDirection, child: child!),
       home: Scaffold(
         body: Align(
           alignment: Alignment.bottomCenter,

@@ -15,7 +15,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderAbstractViewport;
+import 'package:flutter/rendering.dart'
+    show
+        FlexParentData,
+        RenderAbstractViewport,
+        RenderEditable,
+        RenderFlex,
+        RenderObject;
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -432,6 +438,87 @@ class _DesktopChatComposerActionRegistration {
   final Future<void> Function() captureScreenshot;
   final bool Function() hasFocus;
   final bool Function() isVisible;
+}
+
+/// Centers a standard phone composer's editor and controls on one visual
+/// line. For a growing editor, keep the usual bottom-aligned control row.
+class _ComposerSingleLineRow extends Row {
+  const _ComposerSingleLineRow({
+    super.key,
+    required this.centerSingleLine,
+    required super.crossAxisAlignment,
+    required super.children,
+  });
+
+  final bool centerSingleLine;
+
+  @override
+  _RenderComposerSingleLineRow createRenderObject(BuildContext context) =>
+      _RenderComposerSingleLineRow(
+        centerSingleLine,
+        crossAxisAlignment: crossAxisAlignment,
+        textDirection: getEffectiveTextDirection(context),
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderComposerSingleLineRow renderObject,
+  ) {
+    super.updateRenderObject(context, renderObject);
+    renderObject.centerSingleLine = centerSingleLine;
+  }
+}
+
+class _RenderComposerSingleLineRow extends RenderFlex {
+  _RenderComposerSingleLineRow(
+    this._centerSingleLine, {
+    required super.crossAxisAlignment,
+    required super.textDirection,
+  }) : super(direction: Axis.horizontal);
+
+  bool _centerSingleLine;
+  bool? _singleLine;
+
+  set centerSingleLine(bool value) {
+    if (_centerSingleLine == value) return;
+    _centerSingleLine = value;
+    markNeedsLayout();
+  }
+
+  // Use the laid-out editor, not the draft string: soft wrapping, text scale,
+  // and IME composition all affect the visual line count. The outer row can
+  // reuse the result from the inner row in the same layout pass.
+  bool? _findSingleLine(RenderObject child) {
+    if (child is _RenderComposerSingleLineRow) return child._singleLine;
+    if (child is RenderEditable) {
+      return !child
+          .startVerticalCaretMovement(const TextPosition(offset: 0))
+          .moveNext();
+    }
+    bool? result;
+    child.visitChildren((descendant) => result ??= _findSingleLine(descendant));
+    return result;
+  }
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    _singleLine = null;
+    if (!_centerSingleLine) return;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      _singleLine = _findSingleLine(child);
+      if (_singleLine != null) break;
+    }
+    if (_singleLine != true) return;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      final data = child.parentData! as FlexParentData;
+      data.offset = Offset(
+        data.offset.dx,
+        (size.height - child.size.height) / 2,
+      );
+    }
+  }
 }
 
 class _SendComposerIntent extends Intent {
@@ -3112,6 +3199,8 @@ class _ChatInputBarState extends State<ChatInputBar>
       viewportHeight: MediaQuery.sizeOf(context).height,
     );
     final simpleBot = simple && vm.peerIsBot;
+    final standard = !desktop && !simple;
+    final hasAiSendPrefix = _showsAiSendPrefix(editing: editing);
     Widget rowFor({required bool showLeadingCell}) => Padding(
       key: desktop ? const ValueKey('desktopComposerInput') : null,
       padding: desktop
@@ -3126,7 +3215,10 @@ class _ChatInputBarState extends State<ChatInputBar>
         key: desktop ? const ValueKey('desktopComposerInputStack') : null,
         clipBehavior: Clip.none,
         children: [
-          Row(
+          _ComposerSingleLineRow(
+            // AI progress and the Send prefix add content above the row.
+            centerSingleLine:
+                standard && _aiReplyProgressPhases.isEmpty && !hasAiSendPrefix,
             key: desktop
                 ? const ValueKey('desktopComposerFullWidthEditorRow')
                 : null,
@@ -3206,7 +3298,8 @@ class _ChatInputBarState extends State<ChatInputBar>
                                 horizontal: 12,
                                 vertical: 9,
                               ),
-                        child: Row(
+                        child: _ComposerSingleLineRow(
+                          centerSingleLine: standard,
                           crossAxisAlignment: hasText
                               ? CrossAxisAlignment.end
                               : CrossAxisAlignment.center,
@@ -3581,6 +3674,9 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  bool _showsAiSendPrefix({required bool editing}) =>
+      !editing && vm.canUseAiComposition && _aiDraftEligible;
+
   /// The phone Send button, with the AI-style prefix stacked above it when
 
   /// the draft is eligible. Shared unchanged by the standard and simple rows.
@@ -3593,7 +3689,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (!editing && vm.canUseAiComposition && _aiDraftEligible) ...[
+        if (_showsAiSendPrefix(editing: editing)) ...[
           Semantics(
             button: true,
             label: AppStringKeys.telegramAiEditorTelegramAIEditor.l10n(context),
