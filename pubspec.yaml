@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 1.14.0+308
+version: 1.14.1+308
 
 environment:
   sdk: ^3.12.2
@@ -99,7 +99,7 @@ dependencies:
   cineplay:
     git:
       url: https://github.com/iebb/cineplay.git
-      ref: v0.7.0
+      ref: 803a8c29d731ba8f212b09618d76f8d8147d294f
       path: packages/cineplay
   # Main-window chrome uses DragToMoveArea on desktop. Keep this direct rather
   # than relying on the video-player package's transitive dependency.
@@ -197,7 +197,7 @@ dependency_overrides:
   cineplay:
     git:
       url: https://github.com/iebb/cineplay.git
-      ref: v0.7.0
+      ref: 803a8c29d731ba8f212b09618d76f8d8147d294f
       path: packages/cineplay
   fvp:
     git:

@@ -43,6 +43,14 @@
 		BD06D3B4F53874C98C6D9618 /* tdjson.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C5B0C022A4F08FF23637352C /* NotificationCommunicationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */; };
 		EC5A464C2E585460A7FC0495 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F1053565C108E047425E7C1F /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0E1A0C0131F3000100000001 /* ActionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E1A0C0931F3000100000001 /* ActionViewController.swift */; };
+		0E1A0C0231F3000100000001 /* SharedLinkQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E1A0C0A31F3000100000001 /* SharedLinkQueue.swift */; };
+		0E1A0C0331F3000100000001 /* SharedLinkQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E1A0C0A31F3000100000001 /* SharedLinkQueue.swift */; };
+		0E1A0C0431F3000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0E1A0C0D31F3000100000001 /* Assets.xcassets */; };
+		0E1A0C0531F3000100000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 0E1A0C0F31F3000100000001 /* InfoPlist.strings */; };
+		0E1A0C0631F3000100000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 0E1A0C1031F3000100000001 /* Localizable.strings */; };
+		0E1A0C0731F3000100000001 /* OpenInMithka.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0E1A0C0E31F3000100000001 /* OpenInMithka.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0E1A0C4031F3000100000001 /* SharedLinkQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E1A0C4131F3000100000001 /* SharedLinkQueueTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +75,13 @@
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
 		};
+		0E1A0C0831F3000100000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0E1A0C1531F3000100000001;
+			remoteInfo = OpenInMithka;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -77,6 +92,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				EC5A464C2E585460A7FC0495 /* NotificationService.appex in Embed Foundation Extensions */,
+				0E1A0C0731F3000100000001 /* OpenInMithka.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -147,6 +163,29 @@
 		F1053565C108E047425E7C1F /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = RunnerUITests.xctest; path = RunnerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunnerUITests.swift; sourceTree = "<group>"; };
+		0E1A0C0931F3000100000001 /* ActionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionViewController.swift; sourceTree = "<group>"; };
+		0E1A0C0A31F3000100000001 /* SharedLinkQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkQueue.swift; sourceTree = "<group>"; };
+		0E1A0C0B31F3000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		0E1A0C0C31F3000100000001 /* OpenInMithka.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenInMithka.entitlements; sourceTree = "<group>"; };
+		0E1A0C0D31F3000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		0E1A0C0E31F3000100000001 /* OpenInMithka.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenInMithka.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0E1A0C1B31F3000100000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2331F3000100000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C1C31F3000100000001 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh-Hans; path = zh-Hans.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2431F3000100000001 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh-Hans; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C1D31F3000100000001 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh-Hant; path = zh-Hant.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2531F3000100000001 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh-Hant; path = zh-Hant.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C1E31F3000100000001 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2631F3000100000001 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C1F31F3000100000001 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2731F3000100000001 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C2031F3000100000001 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2831F3000100000001 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C2131F3000100000001 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2931F3000100000001 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C2231F3000100000001 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0E1A0C2A31F3000100000001 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		0E1A0C4131F3000100000001 /* SharedLinkQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkQueueTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -184,6 +223,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0E1A0C1231F3000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -202,6 +248,7 @@
 			isa = PBXGroup;
 			children = (
 				331C807B294A618700263BE5 /* RunnerTests.swift */,
+				0E1A0C4131F3000100000001 /* SharedLinkQueueTests.swift */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -238,6 +285,7 @@
 				E0A445C3AA6A613EA2B5CBF2 /* Pods */,
 				58A8BF37A222A722C6007F34 /* RunnerUITests */,
 				26D1AFF4D17C41600908E87B /* NotificationService */,
+				0E1A0C1131F3000100000001 /* OpenInMithka */,
 			);
 			sourceTree = "<group>";
 		};
@@ -248,6 +296,7 @@
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */,
 				F1053565C108E047425E7C1F /* NotificationService.appex */,
+				0E1A0C0E31F3000100000001 /* OpenInMithka.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -283,6 +332,7 @@
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				8CE983C22FEBFF5D00D0A469 /* Pengram.icon */,
 				B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */,
+				0E1A0C0A31F3000100000001 /* SharedLinkQueue.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -317,6 +367,19 @@
 				EFF89E330D2D2A54C6DE0C80 /* Pods-RunnerTests.profile.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		0E1A0C1131F3000100000001 /* OpenInMithka */ = {
+			isa = PBXGroup;
+			children = (
+				0E1A0C0931F3000100000001 /* ActionViewController.swift */,
+				0E1A0C0D31F3000100000001 /* Assets.xcassets */,
+				0E1A0C0F31F3000100000001 /* InfoPlist.strings */,
+				0E1A0C1031F3000100000001 /* Localizable.strings */,
+				0E1A0C0B31F3000100000001 /* Info.plist */,
+				0E1A0C0C31F3000100000001 /* OpenInMithka.entitlements */,
+			);
+			path = OpenInMithka;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -380,6 +443,7 @@
 			);
 			dependencies = (
 				8833BFB8677232CA5564100F /* PBXTargetDependency */,
+				0E1A0C1631F3000100000001 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -404,6 +468,23 @@
 			name = NotificationService;
 			productName = NotificationService;
 			productReference = F1053565C108E047425E7C1F /* NotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		0E1A0C1531F3000100000001 /* OpenInMithka */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0E1A0C1A31F3000100000001 /* Build configuration list for PBXNativeTarget "OpenInMithka" */;
+			buildPhases = (
+				0E1A0C1431F3000100000001 /* Sources */,
+				0E1A0C1231F3000100000001 /* Frameworks */,
+				0E1A0C1331F3000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenInMithka;
+			productName = OpenInMithka;
+			productReference = 0E1A0C0E31F3000100000001 /* OpenInMithka.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -449,6 +530,14 @@
 							};
 						};
 					};
+					0E1A0C1531F3000100000001 = {
+						CreatedOnToolsVersion = 27.0;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+						};
+					};
 				};
 			};
 			buildConfigurationList = 97C146E91CF9000F007C117D /* Build configuration list for PBXProject "Runner" */;
@@ -458,6 +547,13 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
+				"zh-Hant",
+				ja,
+				ko,
+				fr,
+				es,
+				de,
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
@@ -471,6 +567,7 @@
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				7E185FF3DAB034683BE5749C /* RunnerUITests */,
 				CE9B1312FBCA8AFB61E03CDB /* NotificationService */,
+				0E1A0C1531F3000100000001 /* OpenInMithka */,
 			);
 		};
 /* End PBXProject section */
@@ -507,6 +604,16 @@
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				AF0EED0531E1000100000001 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0E1A0C1331F3000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E1A0C0431F3000100000001 /* Assets.xcassets in Resources */,
+				0E1A0C0531F3000100000001 /* InfoPlist.strings in Resources */,
+				0E1A0C0631F3000100000001 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -667,6 +774,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
+				0E1A0C4031F3000100000001 /* SharedLinkQueueTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -701,6 +809,7 @@
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				8092FDF4748B19657BE593AF /* NotificationCommunicationContent.swift in Sources */,
+				0E1A0C0231F3000100000001 /* SharedLinkQueue.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -709,6 +818,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				A685F7A8DE8A8339A7CFE48A /* RunnerUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0E1A0C1431F3000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E1A0C0131F3000100000001 /* ActionViewController.swift in Sources */,
+				0E1A0C0331F3000100000001 /* SharedLinkQueue.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -732,6 +850,12 @@
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = E2D68C5593A8C49A7C6CE6AB /* PBXContainerItemProxy */;
 		};
+		0E1A0C1631F3000100000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = OpenInMithka;
+			target = 0E1A0C1531F3000100000001 /* OpenInMithka */;
+			targetProxy = 0E1A0C0831F3000100000001 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
@@ -749,6 +873,36 @@
 				97C147001CF9000F007C117D /* Base */,
 			);
 			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		0E1A0C0F31F3000100000001 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				0E1A0C1B31F3000100000001 /* en */,
+				0E1A0C1C31F3000100000001 /* zh-Hans */,
+				0E1A0C1D31F3000100000001 /* zh-Hant */,
+				0E1A0C1E31F3000100000001 /* ja */,
+				0E1A0C1F31F3000100000001 /* ko */,
+				0E1A0C2031F3000100000001 /* fr */,
+				0E1A0C2131F3000100000001 /* es */,
+				0E1A0C2231F3000100000001 /* de */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		0E1A0C1031F3000100000001 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				0E1A0C2331F3000100000001 /* en */,
+				0E1A0C2431F3000100000001 /* zh-Hans */,
+				0E1A0C2531F3000100000001 /* zh-Hant */,
+				0E1A0C2631F3000100000001 /* ja */,
+				0E1A0C2731F3000100000001 /* ko */,
+				0E1A0C2831F3000100000001 /* fr */,
+				0E1A0C2931F3000100000001 /* es */,
+				0E1A0C2A31F3000100000001 /* de */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
@@ -1245,6 +1399,83 @@
 			};
 			name = Profile;
 		};
+		0E1A0C1831F3000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = OpenInMithka/OpenInMithka.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenInMithka/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.OpenInMithka;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		0E1A0C1731F3000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = OpenInMithka/OpenInMithka.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenInMithka/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.OpenInMithka;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0E1A0C1931F3000100000001 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = OpenInMithka/OpenInMithka.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenInMithka/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.OpenInMithka;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Profile;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1294,6 +1525,16 @@
 				B550F13CAFB52A039AA3F8B6 /* Release */,
 				745A21E8F2DA8F131DC81BDA /* Debug */,
 				C27D450AB8BF2AA59335D2A3 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0E1A0C1A31F3000100000001 /* Build configuration list for PBXNativeTarget "OpenInMithka" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0E1A0C1831F3000100000001 /* Release */,
+				0E1A0C1731F3000100000001 /* Debug */,
+				0E1A0C1931F3000100000001 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

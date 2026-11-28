@@ -18,16 +18,20 @@ import 'package:flutter/rendering.dart'
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../chat/media/media_download_service.dart';
 import '../../chat/media/video_player_view.dart';
 import '../../chat/media/video_stream_debugger.dart';
 import '../../components/app_icons.dart';
+import '../../components/toast.dart';
 import '../../l10n/app_localizations.dart';
 import '../../media/video_playback_reporting.dart';
 import '../../tdlib/td_client.dart';
 import '../../tdlib/td_image_loader.dart';
+import '../../tdlib/td_models.dart';
 import '../../theme/app_theme.dart';
 import '../video_split_controller.dart';
 import 'desktop_media_window_registry.dart';
+import 'desktop_video_window_actions.dart';
 
 bool get supportsDesktopVideoWindows => fVideoSupportsDesktopVideoWindows;
 
@@ -105,7 +109,36 @@ class DesktopVideoWindowService {
   /// has it instead of stacking a second copy of the same video.
   final DesktopMediaWindowRegistry _windows = DesktopMediaWindowRegistry();
 
-  Future<bool> open(VideoSplitSession session, {bool muted = false}) async {
+  /// Save and share targets of each open window, by window id.
+  final Map<int, _VideoWindowActions> _actions = {};
+
+  /// Opens still in flight. A new window can ask for its actions before
+  /// [open] has learned the window's id, so requests wait for these first.
+  final Set<Future<void>> _opening = {};
+
+  /// Opens [session] in its own window. [onShare] forwards the message from
+  /// the chat that opened it and returns whether the share sheet opened; when
+  /// null, the window offers Save only.
+  Future<bool> open(
+    VideoSplitSession session, {
+    bool muted = false,
+    Future<bool> Function()? onShare,
+  }) async {
+    final done = Completer<void>();
+    _opening.add(done.future);
+    try {
+      return await _open(session, muted: muted, onShare: onShare);
+    } finally {
+      _opening.remove(done.future);
+      done.complete();
+    }
+  }
+
+  Future<bool> _open(
+    VideoSplitSession session, {
+    required bool muted,
+    Future<bool> Function()? onShare,
+  }) async {
     if (!supportsDesktopVideoWindows) return false;
     final videoId = session.video.id;
     final accountSlot = session.accountSlot ?? TdClient.shared.activeSlot;
@@ -155,11 +188,18 @@ class DesktopVideoWindowService {
         ),
         onClosed: () {
           _windows.forget(mediaKey);
+          _actions.remove(openedWindowId);
           return releaseResources();
         },
       );
       if (windowId == null) throw StateError('Window creation failed');
       openedWindowId = windowId;
+      setDesktopVideoWindowActionHandler(_handleAction);
+      _actions[windowId] = _VideoWindowActions(
+        video: session.video,
+        accountSlot: accountSlot,
+        onShare: onShare,
+      );
       handedOffToWindow = true;
       return true;
     } catch (_) {
@@ -169,6 +209,63 @@ class DesktopVideoWindowService {
       if (!handedOffToWindow) await releaseResources();
     }
   }
+
+  Future<Map<String, Object?>?> _handleAction(
+    int fromWindowId,
+    DesktopVideoWindowAction action,
+  ) async {
+    var actions = _actions[fromWindowId];
+    if (actions == null && _opening.isNotEmpty) {
+      await Future.wait(
+        _opening.toList(),
+      ).timeout(const Duration(seconds: 5), onTimeout: () => const []);
+      actions = _actions[fromWindowId];
+    }
+    if (actions == null) return null;
+    switch (action) {
+      case DesktopVideoWindowAction.capabilities:
+        return DesktopVideoWindowCapabilities(
+          canSave: MediaDownloadService.isSupported,
+          canShare: actions.onShare != null,
+        ).toJson();
+      case DesktopVideoWindowAction.save:
+        final outcome = await MediaDownloadService.saveMedia(
+          file: actions.video,
+          isVideo: true,
+          accountSlot: actions.accountSlot,
+        );
+        return DesktopVideoWindowActionResult(
+          ok: outcome.result == MediaDownloadResult.saved,
+          message: MediaDownloadService.feedbackFor(outcome),
+        ).toJson();
+      case DesktopVideoWindowAction.share:
+        final onShare = actions.onShare;
+        if (onShare == null) {
+          return DesktopVideoWindowActionResult.failed.toJson();
+        }
+        // The chat picker opens in this window, so bring it forward first.
+        await focusCurrentDesktopWindow();
+        bool ok;
+        try {
+          ok = await onShare();
+        } on Object {
+          ok = false;
+        }
+        return DesktopVideoWindowActionResult(ok: ok).toJson();
+    }
+  }
+}
+
+class _VideoWindowActions {
+  const _VideoWindowActions({
+    required this.video,
+    required this.accountSlot,
+    required this.onShare,
+  });
+
+  final TdFileRef video;
+  final int accountSlot;
+  final Future<bool> Function()? onShare;
 }
 
 class DesktopVideoWindowApp extends StatelessWidget {
@@ -246,6 +343,8 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
   double _downloadBytesPerSecond = 0;
   bool _progressRequestInFlight = false;
   bool _debuggerVisible = false;
+  DesktopVideoWindowCapabilities _messageActions =
+      DesktopVideoWindowCapabilities.none;
   bool _pictureInPictureSupported = false;
   bool _pictureInPicture = false;
   bool _pictureInPictureBusy = false;
@@ -267,6 +366,35 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
       (_) => unawaited(_pollProgress()),
     );
     unawaited(_loadPictureInPictureSupport());
+    unawaited(_loadMessageActions());
+  }
+
+  Future<void> _loadMessageActions() async {
+    final capabilities = await requestDesktopVideoWindowCapabilities();
+    if (mounted && capabilities.any) {
+      setState(() => _messageActions = capabilities);
+    }
+  }
+
+  Future<void> _saveVideo() async {
+    final result = await requestDesktopVideoWindowAction(
+      DesktopVideoWindowAction.save,
+    );
+    // The save panel belongs to the main window; come back to the video.
+    await focusCurrentDesktopWindow();
+    if (!mounted) return;
+    final message =
+        result.message ??
+        (result.ok ? null : AppStringKeys.chatSaveToFolderFailed);
+    if (message != null) showToast(context, message);
+  }
+
+  Future<void> _shareVideo() async {
+    final result = await requestDesktopVideoWindowAction(
+      DesktopVideoWindowAction.share,
+    );
+    if (!mounted || result.ok) return;
+    showToast(context, AppStringKeys.videoPlayerForwardUnsupported);
   }
 
   Future<void> _pollProgress() async {
@@ -572,6 +700,18 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
         aspectRatio: aspectRatio,
         downloadedFraction: _progress?.prefixFraction ?? _progress?.fraction,
         thumbnailProvider: _provideScrubThumbnail,
+        shareButton: _messageActions.any
+            ? MithkaVideoShareMenuButton(
+                controlsVisible: scope.snapshot.controlsVisible,
+                onSave: _messageActions.canSave
+                    ? () => unawaited(_saveVideo())
+                    : null,
+                onShare: _messageActions.canShare
+                    ? () => unawaited(_shareVideo())
+                    : null,
+                onOpened: scope.actions.showControls,
+              )
+            : null,
         pinButton: ValueListenableBuilder<bool>(
           valueListenable: FVideoDesktopWindows.currentWindowAlwaysOnTop,
           builder: (context, pinned, _) => MithkaVideoChromeAction(
@@ -581,10 +721,7 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
               unawaited(FVideoDesktopWindows.toggleCurrentWindowAlwaysOnTop());
               scope.actions.showControls();
             },
-            cornerRadius: 22,
-            backgroundColor: pinned
-                ? const Color(0xD92C6565)
-                : const Color(0xB82C2C2E),
+            iconColor: pinned ? const Color(0xFF24DDD9) : Colors.white,
           ),
         ),
         modeButton: _pictureInPictureSupported

@@ -202,7 +202,69 @@ void main() {
     // The slot is persisted and active.
     expect(harness.persistedSlots(), [0, 1]);
     expect(harness.prefs.getInt('drachma.activeSlot'), 1);
+    // A packed session names its account, so TDLib starts it signed in and
+    // the client is kept as it is.
+    expect(harness.bindings.sentTo(100, 'close'), isEmpty);
+    expect(harness.client.clientId(1), 100);
   });
+
+  test(
+    'a GramJS import reopens its client once TDLib resolves the account',
+    () async {
+      final harness = await _prepare(respond: _steadyResponder(777));
+      final gramJs = gramJsSessionFromTdSessionString(_syntheticSession());
+
+      final slot = await harness.client.restoreGramJsSessionSlot(gramJs);
+
+      expect(slot, 1);
+      expect(harness.client.activeSlot, 1);
+      // The client TDLib opened before it knew the account is closed and
+      // replaced on the same database, which the importer wrote only once.
+      expect(harness.bindings.sentTo(100, 'close'), hasLength(1));
+      expect(harness.bindings.imported, hasLength(1));
+      expect(harness.client.clientId(1), 101);
+      expect(harness.bindings.sentTo(101, 'close'), isEmpty);
+      final parameters = harness.bindings.sentTo(101, 'setTdlibParameters');
+      expect(parameters, hasLength(1));
+      expect(parameters.single['database_directory'], harness.slotDir(1).path);
+      expect(File('${harness.slotDir(1).path}/td.binlog').existsSync(), isTrue);
+      expect(harness.persistedSlots(), [0, 1]);
+    },
+  );
+
+  test(
+    'a GramJS import whose reopened client reports another account is refused',
+    () async {
+      final seen = <int>{};
+      final harness = await _prepare(
+        respond: (request, clientId) => switch (request['@type']) {
+          'getAuthorizationState' =>
+            seen.add(clientId) ? _waitParameters() : _ready(),
+          // The first client resolves 777; the reopened one reports 999.
+          'getMe' => _me(clientId == 100 ? 777 : 999),
+          _ => const {'@type': 'ok'},
+        },
+      );
+      final gramJs = gramJsSessionFromTdSessionString(_syntheticSession());
+
+      await expectLater(
+        harness.client.restoreGramJsSessionSlot(gramJs),
+        throwsA(
+          isA<TdSessionRestoreException>().having(
+            (error) => error.toString(),
+            'toString',
+            contains('user mismatch'),
+          ),
+        ),
+      );
+
+      expect(harness.bindings.sentTo(100, 'close'), hasLength(1));
+      expect(harness.bindings.sentTo(101, 'close'), hasLength(1));
+      expect(harness.slotDir(1).existsSync(), isFalse);
+      expect(harness.client.activeSlot, 0);
+      expect(harness.persistedSlots(), isEmpty);
+    },
+  );
 
   test(
     'an unauthorized restored session is refused and its slot discarded',
@@ -352,28 +414,43 @@ void main() {
       );
       expect(harness.client.activeSlot, kept);
       expect(harness.persistedSlots(), containsAll([0, kept]));
-      // The duplicate's directory is gone and exactly one client was closed.
-      // Client ids are assigned after asynchronous directory preparation, so
-      // they must be observed, not derived from slot numbers: assert that the
-      // closed client is the one whose parameters pointed at the discarded
-      // slot's database directory — the wrong live database must never be the
-      // deleted one.
+      // The duplicate's directory is gone. Two clients were closed: the
+      // duplicate, and the kept slot's first client, which was reopened once
+      // its account was resolved. Client ids are assigned after asynchronous
+      // directory preparation, so they must be observed, not derived from slot
+      // numbers: assert which database each closed client pointed at — the
+      // wrong live database must never be the deleted one.
       final discarded = kept == 1 ? 2 : 1;
       expect(harness.slotDir(discarded).existsSync(), isFalse);
       final closedClients = [
         for (final (id, request) in harness.bindings.sent)
           if (request['@type'] == 'close') id,
       ];
-      expect(closedClients, hasLength(1));
-      final parameters = harness.bindings.sentTo(
-        closedClients.single,
-        'setTdlibParameters',
-      );
-      expect(parameters, hasLength(1));
+      expect(closedClients, hasLength(2));
+      final closedDirectories = [
+        for (final id in closedClients)
+          for (final parameters in harness.bindings.sentTo(
+            id,
+            'setTdlibParameters',
+          ))
+            parameters['database_directory'],
+      ];
       expect(
-        parameters.single['database_directory'],
-        harness.slotDir(discarded).path,
-        reason: 'the closed client must belong to the discarded slot',
+        closedDirectories,
+        unorderedEquals([
+          harness.slotDir(discarded).path,
+          harness.slotDir(kept).path,
+        ]),
+      );
+      // The kept slot now runs a client that was never closed.
+      final live = harness.client.clientId(kept);
+      expect(live, isNotNull);
+      expect(closedClients, isNot(contains(live)));
+      expect(
+        harness.bindings
+            .sentTo(live!, 'setTdlibParameters')
+            .single['database_directory'],
+        harness.slotDir(kept).path,
       );
     },
   );

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/settings/ai_translation/ai_http_client.dart';
 import 'package:mithka/settings/ai_translation/ai_settings_controller.dart';
 import 'package:mithka/settings/ai_translation/apple_pcc_api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -189,9 +190,74 @@ void main() {
         );
       },
     );
+
+    test(
+      'saves and deletes a local loopback proxy without touching secure storage when API key is empty',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        var secureWriteCalls = 0;
+        final controller = AiSettingsController(
+          preferences,
+          pccApi: _pccApi(available: false),
+          secureRead: (_) async => null,
+          secureWrite: (_, _) async {
+            secureWriteCalls++;
+            throw StateError('Keychain unavailable');
+          },
+        );
+        await controller.initialize();
+
+        final provider = await controller.saveServerProvider(
+          name: 'Magpie',
+          endpoint: 'http://127.0.0.1:3425/v1/chat/completions',
+          apiKey: '',
+        );
+
+        expect(secureWriteCalls, 0);
+        expect(provider.name, 'Magpie');
+        expect(provider.endpoint, 'http://127.0.0.1:3425/v1/chat/completions');
+        expect(controller.serverProviders, hasLength(1));
+        expect(controller.activeServerProvider?.id, provider.id);
+
+        // Clearing or deleting when secure storage throws still succeeds.
+        await controller.saveServerProvider(
+          id: provider.id,
+          name: 'Magpie Local',
+          endpoint: 'http://127.0.0.1:3425/v1/chat/completions',
+          apiKey: '',
+        );
+        expect(controller.activeServerProvider?.name, 'Magpie Local');
+
+        await controller.deleteServerProvider(provider.id);
+        expect(controller.serverProviders, isEmpty);
+      },
+    );
   });
 
   group('hosted AI endpoint validation', () {
+    test('accepts loopback HTTP endpoints and identifies loopback hosts', () {
+      const validLoopback = [
+        'http://127.0.0.1:3425/v1/chat/completions',
+        'http://localhost:11434/v1/chat/completions',
+        'http://[::1]:8080/v1/chat/completions',
+        'http://proxy.localhost:3425/v1/responses',
+      ];
+      for (final endpoint in validLoopback) {
+        expect(
+          AiSettingsController.isValidOpenAiCompatibleEndpoint(endpoint),
+          isTrue,
+          reason: endpoint,
+        );
+      }
+      expect(isAiLoopbackHost('127.0.0.1'), isTrue);
+      expect(isAiLoopbackHost('localhost'), isTrue);
+      expect(isAiLoopbackHost('foo.localhost'), isTrue);
+      expect(isAiLoopbackHost('::1'), isTrue);
+      expect(isAiLoopbackHost('api.openai.com'), isFalse);
+      expect(isAiLoopbackHost('192.168.1.10'), isFalse);
+    });
+
     test('rejects insecure remote, inexact, and credential-bearing URLs', () {
       const invalid = [
         '',

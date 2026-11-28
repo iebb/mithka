@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 import 'package:heroicons_flutter/heroicons_flutter.dart';
 
@@ -19,18 +20,19 @@ const IconData _pinGlyphSentinel = IconData(0);
 const AppIconData pinGlyph = AppIconData(_pinGlyphSentinel);
 
 class AppIcon extends StatelessWidget {
-  const AppIcon(this.icon, {super.key, this.size, this.color});
+  const AppIcon(this.icon, {super.key, this.size, this.color, this.shadows});
 
   final AppIconData icon;
   final double? size;
   final Color? color;
+  final List<Shadow>? shadows;
 
   @override
   Widget build(BuildContext context) {
     if (identical(icon, pinGlyph)) {
-      return AppPinIcon(size: size ?? 24, color: color);
+      return AppPinIcon(size: size ?? 24, color: color, shadows: shadows);
     }
-    return Icon(icon.data, size: size, color: color);
+    return Icon(icon.data, size: size, color: color, shadows: shadows);
   }
 }
 
@@ -45,11 +47,13 @@ class AppSeekTenIcon extends StatelessWidget {
     required this.backwards,
     this.size = 32,
     this.color,
+    this.shadows,
   });
 
   final bool backwards;
   final double size;
   final Color? color;
+  final List<Shadow>? shadows;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +65,7 @@ class AppSeekTenIcon extends StatelessWidget {
         painter: _AppSeekTenIconPainter(
           backwards: backwards,
           color: resolvedColor,
+          shadows: shadows ?? const [],
         ),
       ),
     );
@@ -68,10 +73,15 @@ class AppSeekTenIcon extends StatelessWidget {
 }
 
 class _AppSeekTenIconPainter extends CustomPainter {
-  const _AppSeekTenIconPainter({required this.backwards, required this.color});
+  const _AppSeekTenIconPainter({
+    required this.backwards,
+    required this.color,
+    this.shadows = const [],
+  });
 
   final bool backwards;
   final Color color;
+  final List<Shadow> shadows;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -79,47 +89,70 @@ class _AppSeekTenIconPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = extent * 0.37;
     final strokeWidth = (extent * 0.075).clamp(1.5, 3.4);
+
+    void drawArrow(Paint paint) {
+      canvas.save();
+      if (backwards) {
+        canvas.translate(size.width, 0);
+        canvas.scale(-1, 1);
+      }
+      final arcBounds = Rect.fromCircle(center: center, radius: radius);
+      const startAngle = math.pi * 0.22;
+      const sweepAngle = math.pi * 1.48;
+      canvas.drawArc(arcBounds, startAngle, sweepAngle, false, paint);
+
+      const endAngle = startAngle + sweepAngle;
+      final tip = Offset(
+        center.dx + math.cos(endAngle) * radius,
+        center.dy + math.sin(endAngle) * radius,
+      );
+      final tangent = Offset(-math.sin(endAngle), math.cos(endAngle));
+      final perpendicular = Offset(-tangent.dy, tangent.dx);
+      final arrowLength = extent * 0.17;
+      final arrowWidth = extent * 0.095;
+      final arrowBase = tip - tangent * arrowLength;
+      canvas.drawPath(
+        Path()
+          ..moveTo(
+            arrowBase.dx + perpendicular.dx * arrowWidth,
+            arrowBase.dy + perpendicular.dy * arrowWidth,
+          )
+          ..lineTo(tip.dx, tip.dy)
+          ..lineTo(
+            arrowBase.dx - perpendicular.dx * arrowWidth,
+            arrowBase.dy - perpendicular.dy * arrowWidth,
+          ),
+        paint,
+      );
+      canvas.restore();
+    }
+
+    for (final shadow in shadows) {
+      final shadowPaint = Paint()
+        ..color = shadow.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      if (shadow.blurSigma > 0) {
+        shadowPaint.maskFilter = MaskFilter.blur(
+          BlurStyle.normal,
+          shadow.blurSigma,
+        );
+      }
+      canvas.save();
+      canvas.translate(shadow.offset.dx, shadow.offset.dy);
+      drawArrow(shadowPaint);
+      canvas.restore();
+    }
+
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-
-    canvas.save();
-    if (backwards) {
-      canvas.translate(size.width, 0);
-      canvas.scale(-1, 1);
-    }
-    final arcBounds = Rect.fromCircle(center: center, radius: radius);
-    const startAngle = math.pi * 0.22;
-    const sweepAngle = math.pi * 1.48;
-    canvas.drawArc(arcBounds, startAngle, sweepAngle, false, paint);
-
-    const endAngle = startAngle + sweepAngle;
-    final tip = Offset(
-      center.dx + math.cos(endAngle) * radius,
-      center.dy + math.sin(endAngle) * radius,
-    );
-    final tangent = Offset(-math.sin(endAngle), math.cos(endAngle));
-    final perpendicular = Offset(-tangent.dy, tangent.dx);
-    final arrowLength = extent * 0.17;
-    final arrowWidth = extent * 0.095;
-    final arrowBase = tip - tangent * arrowLength;
-    canvas.drawPath(
-      Path()
-        ..moveTo(
-          arrowBase.dx + perpendicular.dx * arrowWidth,
-          arrowBase.dy + perpendicular.dy * arrowWidth,
-        )
-        ..lineTo(tip.dx, tip.dy)
-        ..lineTo(
-          arrowBase.dx - perpendicular.dx * arrowWidth,
-          arrowBase.dy - perpendicular.dy * arrowWidth,
-        ),
-      paint,
-    );
-    canvas.restore();
+    drawArrow(paint);
 
     final numeral = TextPainter(
       text: TextSpan(
@@ -130,6 +163,7 @@ class _AppSeekTenIconPainter extends CustomPainter {
           fontWeight: FontWeight.w400,
           height: 1,
           fontFeatures: const [FontFeature.tabularFigures()],
+          shadows: shadows.isEmpty ? null : shadows,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -145,7 +179,9 @@ class _AppSeekTenIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AppSeekTenIconPainter oldDelegate) =>
-      oldDelegate.backwards != backwards || oldDelegate.color != color;
+      oldDelegate.backwards != backwards ||
+      oldDelegate.color != color ||
+      !listEquals(oldDelegate.shadows, shadows);
 }
 
 /// Owned push-pin glyph for pinned-item status.
@@ -154,10 +190,11 @@ class _AppSeekTenIconPainter extends CustomPainter {
 /// chats look like Saved Messages. This compact outline keeps the visual
 /// language of the owned icon set without falling back to platform icons.
 class AppPinIcon extends StatelessWidget {
-  const AppPinIcon({super.key, this.size = 16, this.color});
+  const AppPinIcon({super.key, this.size = 16, this.color, this.shadows});
 
   final double size;
   final Color? color;
+  final List<Shadow>? shadows;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +202,12 @@ class AppPinIcon extends StatelessWidget {
         color ?? IconTheme.of(context).color ?? const Color(0xFF000000);
     return SizedBox.square(
       dimension: size,
-      child: CustomPaint(painter: _AppPinIconPainter(color: resolvedColor)),
+      child: CustomPaint(
+        painter: _AppPinIconPainter(
+          color: resolvedColor,
+          shadows: shadows ?? const [],
+        ),
+      ),
     );
   }
 }
@@ -309,19 +351,14 @@ class _AppKeyboardIconPainter extends CustomPainter {
 }
 
 class _AppPinIconPainter extends CustomPainter {
-  const _AppPinIconPainter({required this.color});
+  const _AppPinIconPainter({required this.color, this.shadows = const []});
 
   final Color color;
+  final List<Shadow> shadows;
 
   @override
   void paint(Canvas canvas, Size size) {
     final strokeWidth = (size.shortestSide * 0.11).clamp(1.1, 1.7);
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
     final body = Path()
       ..moveTo(size.width * 0.30, size.height * 0.14)
       ..lineTo(size.width * 0.70, size.height * 0.14)
@@ -330,17 +367,47 @@ class _AppPinIconPainter extends CustomPainter {
       ..lineTo(size.width * 0.22, size.height * 0.57)
       ..lineTo(size.width * 0.36, size.height * 0.42)
       ..close();
-    canvas.drawPath(body, paint);
-    canvas.drawLine(
-      Offset(size.width * 0.50, size.height * 0.57),
-      Offset(size.width * 0.50, size.height * 0.90),
-      paint,
-    );
+
+    void drawPin(Paint paint) {
+      canvas.drawPath(body, paint);
+      canvas.drawLine(
+        Offset(size.width * 0.50, size.height * 0.57),
+        Offset(size.width * 0.50, size.height * 0.90),
+        paint,
+      );
+    }
+
+    for (final shadow in shadows) {
+      final shadowPaint = Paint()
+        ..color = shadow.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      if (shadow.blurSigma > 0) {
+        shadowPaint.maskFilter = MaskFilter.blur(
+          BlurStyle.normal,
+          shadow.blurSigma,
+        );
+      }
+      canvas.save();
+      canvas.translate(shadow.offset.dx, shadow.offset.dy);
+      drawPin(shadowPaint);
+      canvas.restore();
+    }
+
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    drawPin(paint);
   }
 
   @override
   bool shouldRepaint(_AppPinIconPainter oldDelegate) =>
-      oldDelegate.color != color;
+      oldDelegate.color != color || !listEquals(oldDelegate.shadows, shadows);
 }
 
 class HeroAppIcons {

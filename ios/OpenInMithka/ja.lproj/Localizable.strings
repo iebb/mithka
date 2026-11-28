@@ -1,0 +1,8 @@
+"linkNotTelegramLink" = "Mithka で開けるのは Telegram リンクだけです。";
+"linkHandlerOpenTelegramLinkFailed" = "Telegram リンクを開けません";
+"linkShareContinueTitle" = "続けるには Mithka を開いてください";
+"linkShareTapNotification" = "通知をタップすると、Mithka でリンクが開きます。";
+"linkShareOpensNextTime" = "次に Mithka を開いたときに、このリンクが開きます。";
+"linkShareNotificationTitle" = "Telegram リンクの準備ができました";
+"linkShareNotificationBody" = "タップすると Mithka で開きます。";
+"linkShareDone" = "完了";

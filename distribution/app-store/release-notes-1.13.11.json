@@ -1,0 +1,4 @@
+{
+  "en-US": "Fixes videos failing to open in the macOS app. Restores the Liquid Glass application icon and retains the original artwork for small legacy icon fallbacks.",
+  "zh-Hans": "修复 macOS 应用中视频无法打开的问题。恢复液态玻璃应用图标，并为小尺寸的旧式图标保留原有图案。"
+}

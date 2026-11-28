@@ -266,6 +266,7 @@
 				33CC10E92044A3C60003C045 /* Sources */,
 				33CC10EA2044A3C60003C045 /* Frameworks */,
 				33CC10EB2044A3C60003C045 /* Resources */,
+				A40D2E8C2F3326A000D1B003 /* Keep small legacy icon fallbacks */,
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 				A40D2E8A2F3326A000D1B001 /* Embed macOS TDLib */,
@@ -361,6 +362,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A40D2E8C2F3326A000D1B003 /* Keep small legacy icon fallbacks */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Pengram.icns",
+				"$(SRCROOT)/../scripts/macos-small-icon-fallback.py",
+				"$(SRCROOT)/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_16.png",
+				"$(SRCROOT)/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_32.png",
+				"$(SRCROOT)/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_64.png",
+			);
+			name = "Keep small legacy icon fallbacks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\npython3 \"$SRCROOT/../scripts/macos-small-icon-fallback.py\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Pengram.icns\" \"$SRCROOT/Runner/Assets.xcassets/AppIcon.appiconset\"\n";
+			showEnvVarsInLog = 0;
+		};
 		3399D490228B24CF009A79C7 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -656,7 +678,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -789,7 +811,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -810,7 +832,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Release.entitlements;
 				CODE_SIGN_STYLE = Automatic;

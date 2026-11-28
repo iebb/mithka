@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../settings/ai_translation/ai_endpoint_style.dart';
+import '../../settings/ai_translation/ai_http_client.dart';
 import '../../settings/ai_translation/ai_settings_controller.dart';
 import '../../settings/ai_translation/ai_stdout_logger.dart';
 import '../../settings/ai_translation/ai_translation_prompt.dart';
@@ -27,7 +28,7 @@ class AiChatTranslationService {
   }) : assert(providerMode != null || telegramAi != null),
        instructions = buildAiTranslationInstructions(instructions),
        _appleApi = appleApi ?? ApplePccApi(),
-       _httpClient = httpClient ?? http.Client(),
+       _httpClient = httpClient ?? createAiHttpClient(),
        _aiLogger = aiLogger ?? aiStdoutLogger,
        _telegramAi = telegramAi,
        _ownsHttpClient = httpClient == null;

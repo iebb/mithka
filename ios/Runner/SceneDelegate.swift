@@ -19,6 +19,19 @@ class SceneDelegate: FlutterSceneDelegate {
     for activity in connectionOptions.userActivities {
       if HandoffBridge.shared.accept(activity) { break }
     }
+    noteOpenedURLs(connectionOptions.urlContexts)
+  }
+
+  override func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    noteOpenedURLs(URLContexts)
+    super.scene(scene, openURLContexts: URLContexts)
+  }
+
+  private func noteOpenedURLs(_ contexts: Set<UIOpenURLContext>) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    for context in contexts {
+      appDelegate.noteOpenedURL(context.url)
+    }
   }
 
   override func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
